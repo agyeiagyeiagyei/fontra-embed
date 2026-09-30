@@ -41,8 +41,8 @@ done
 # 60+ call sites across 20 files; a new absolute ref after a re-pin fails
 # loudly at runtime (404), not silently here.
 for prefix in lang data fonts css images tabler-icons; do
-  grep -rl "\"/${prefix}/" "$VENDOR" --include="*.js" --include="*.html" 2>/dev/null \
-    | while read -r f; do sed -i.bak -e "s|\"/${prefix}/|\"./${prefix}/|g" -e "s|'/${prefix}/|'./${prefix}/|g" "$f"; done
+  grep -rlE "[\"'\`]/${prefix}/" "$VENDOR" --include="*.js" --include="*.html" 2>/dev/null \
+    | while read -r f; do sed -i.bak -e "s|\"/${prefix}/|\"./${prefix}/|g" -e "s|'/${prefix}/|'./${prefix}/|g" -e "s|\`/${prefix}/|\`./${prefix}/|g" "$f"; done
   find "$VENDOR" -name "*.bak" -delete
 done
 
