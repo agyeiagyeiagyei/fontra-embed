@@ -1,0 +1,597 @@
+:root {
+  --editor-tool-button-hover-background-color-light: #eee;
+  --editor-tool-button-hover-background-color-dark: #333;
+
+  --editor-tool-button-active-background-color-light: #ccc;
+  --editor-tool-button-active-background-color-dark: #555;
+
+  --editor-tool-button-selected-background-color-light: #666;
+  --editor-tool-button-selected-background-color-dark: #ccc;
+
+  --editor-mini-console-background-color-light: #ddd;
+  --editor-mini-console-background-color-dark: #444;
+
+  --editor-mini-console-foreground-color-light: black;
+  --editor-mini-console-foreground-color-dark: white;
+}
+
+:root {
+  --editor-tool-button-hover-background-color: var(
+    --editor-tool-button-hover-background-color-light
+  );
+  --editor-tool-button-active-background-color: var(
+    --editor-tool-button-active-background-color-light
+  );
+  --editor-tool-button-selected-background-color: var(
+    --editor-tool-button-selected-background-color-light
+  );
+  --editor-mini-console-background-color: var(
+    --editor-mini-console-background-color-light
+  );
+  --editor-mini-console-foreground-color: var(
+    --editor-mini-console-foreground-color-light
+  );
+}
+
+:root.dark-theme {
+  --editor-tool-button-hover-background-color: var(
+    --editor-tool-button-hover-background-color-dark
+  );
+  --editor-tool-button-active-background-color: var(
+    --editor-tool-button-active-background-color-dark
+  );
+  --editor-tool-button-selected-background-color: var(
+    --editor-tool-button-selected-background-color-dark
+  );
+  --editor-mini-console-background-color: var(
+    --editor-mini-console-background-color-dark
+  );
+  --editor-mini-console-foreground-color: var(
+    --editor-mini-console-foreground-color-dark
+  );
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --editor-tool-button-hover-background-color: var(
+      --editor-tool-button-hover-background-color-dark
+    );
+    --editor-tool-button-active-background-color: var(
+      --editor-tool-button-active-background-color-dark
+    );
+    --editor-tool-button-selected-background-color: var(
+      --editor-tool-button-selected-background-color-dark
+    );
+    --editor-mini-console-background-color: var(
+      --editor-mini-console-background-color-dark
+    );
+    --editor-mini-console-foreground-color: var(
+      --editor-mini-console-foreground-color-dark
+    );
+  }
+
+  :root.light-theme {
+    --editor-tool-button-hover-background-color: var(
+      --editor-tool-button-hover-background-color-light
+    );
+    --editor-tool-button-active-background-color: var(
+      --editor-tool-button-active-background-color-light
+    );
+    --editor-tool-button-selected-background-color: var(
+      --editor-tool-button-selected-background-color-light
+    );
+    --editor-mini-console-background-color: var(
+      --editor-mini-console-background-color-light
+    );
+    --editor-mini-console-foreground-color: var(
+      --editor-mini-console-foreground-color-light
+    );
+  }
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100vh;
+}
+
+.editor-container {
+  display: grid;
+  position: relative;
+  grid-template-columns: auto 1fr auto;
+  grid-template-rows: auto 1fr;
+  height: 100%;
+  width: 100%;
+}
+
+.top-bar-container {
+  grid-column: 1 / 4;
+  grid-row: 1;
+}
+
+.sidebar-container,
+.main-container {
+  grid-row-start: 2;
+  grid-row-end: 3;
+}
+
+.sidebar-container {
+  z-index: 100;
+  background-color: var(--ui-element-background-color);
+  height: 100%;
+  width: 0;
+  position: relative;
+}
+
+:root {
+  --sidebar-tab-width: 3em;
+  --sidebar-content-width-left: 20em;
+  --sidebar-content-width-right: 22em;
+  --resize-cursor: col-resize;
+}
+
+:root.sidebar-resizing {
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: var(--resize-cursor);
+}
+
+.sidebar-container.animating {
+  transition: 120ms;
+}
+
+.sidebar-container.left.visible {
+  width: var(--sidebar-content-width-left);
+}
+
+.sidebar-container.right.visible {
+  width: var(--sidebar-content-width-right);
+}
+
+.main-container {
+  position: relative;
+  grid-column: 2;
+}
+
+.main-content {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.main-overlay-container {
+  position: absolute;
+  display: grid;
+  grid-template-columns: 3.5em 1fr 3.5em;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.tab-overlay-container {
+  display: grid;
+  gap: 1em;
+  padding-top: 1em;
+  align-content: start;
+}
+
+.tab-overlay-container.left {
+  justify-content: start;
+  justify-items: start;
+}
+
+.tab-overlay-container.right {
+  justify-content: end;
+  justify-items: end;
+}
+
+.sidebar-shadow-box {
+  z-index: 10;
+  position: absolute;
+  display: none;
+
+  box-shadow: 0px 0px 8px #0006;
+  top: 0;
+  width: 50px; /* arbitrary > blur radius */
+  height: 100%;
+}
+
+.sidebar-shadow-box.visible {
+  display: inherit;
+}
+
+.tab-overlay-container.left > .sidebar-shadow-box {
+  left: -50px;
+}
+
+.tab-overlay-container.right > .sidebar-shadow-box {
+  right: -50px;
+}
+
+.sidebar-tab {
+  display: flex;
+  align-items: center;
+  z-index: 1; /* below the shadow box but above the tools*/
+  width: var(--sidebar-tab-width);
+  height: 2.8em;
+  background-color: var(--ui-element-background-color);
+  box-shadow: 0px 3px 8px #0006;
+  cursor: pointer;
+  pointer-events: auto;
+  user-select: none;
+  animation-duration: 120ms;
+  animation-direction: alternate;
+  animation-timing-function: ease-out;
+  animation-iteration-count: 2;
+}
+
+.sidebar-tab.selected {
+  z-index: 20; /* elevate it above the shadow box */
+}
+
+@keyframes tab-slide-out-animation {
+  100% {
+    width: calc(var(--sidebar-tab-width) + 0.2em);
+  }
+}
+
+@keyframes tab-slide-in-animation {
+  100% {
+    width: calc(var(--sidebar-tab-width) - 0.2em);
+  }
+}
+
+.sidebar-tab:hover {
+  animation-name: tab-slide-out-animation;
+}
+
+.sidebar-tab.selected:hover {
+  animation-name: tab-slide-in-animation;
+}
+
+.tab-overlay-container.left > .sidebar-tab {
+  border-radius: 0 0.8em 0.8em 0;
+  padding-right: 0.25em;
+  justify-content: flex-end;
+}
+
+.tab-overlay-container.right > .sidebar-tab {
+  border-radius: 0.8em 0 0 0.8em;
+  padding-left: 0.25em;
+  justify-content: flex-start;
+}
+
+.tab-overlay-container.right > .sidebar-tab .icon-tabler {
+  stroke-width: 1.5px;
+}
+
+.sidebar-content {
+  display: none;
+  height: calc(100vh - var(--top-bar-height));
+  width: 100%;
+}
+
+.sidebar-container.left > .sidebar-content {
+  float: right;
+  width: var(--sidebar-content-width-left);
+}
+
+.sidebar-container.right > .sidebar-content {
+  float: left;
+  width: var(--sidebar-content-width-right);
+}
+
+.sidebar-container > .sidebar-content.selected {
+  display: inherit;
+}
+
+/* overlay content styling */
+
+.tool-overlay-container {
+  display: flex;
+  justify-content: center;
+  margin: 0;
+}
+
+#text-entry-overlay {
+  margin: 1em;
+}
+
+/* sidebar content styling */
+
+.sidebar-resize-gutter {
+  height: 100%;
+  width: 4px;
+  cursor: var(--resize-cursor);
+  position: absolute;
+}
+
+.sidebar-container.left .sidebar-resize-gutter {
+  right: -2px;
+}
+
+.sidebar-container.right .sidebar-resize-gutter {
+  left: -2px;
+}
+
+.sidebar-tab > inline-svg {
+  display: block;
+  width: 2.2em;
+  height: 2.2em;
+}
+
+.glyphs-navigation {
+  display: flex;
+  flex-direction: column;
+  padding: 0.5em;
+}
+
+.canvas-container {
+  position: relative; /* for the children */
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+#edit-canvas {
+  position: absolute; /* but relative to canvas-container */
+  padding: 0;
+  margin: 0;
+  overscroll-behavior: none;
+  touch-action: none;
+  cursor: default;
+  outline: none;
+}
+
+#edit-canvas.dropping-files {
+  background-color: #99556655;
+}
+
+.cleanable-overlay.overlay-layer-hidden {
+  display: none;
+}
+
+.tools-overlay {
+  display: flex;
+  flex-direction: row;
+  gap: 1em;
+  padding: 1em;
+  position: absolute;
+}
+
+.tools-item {
+  display: flex;
+  background-color: var(--ui-element-background-color);
+  border-radius: 0.65em;
+  box-shadow: 1px 1px 5px #0006;
+  cursor: pointer;
+  height: min-content;
+  pointer-events: auto;
+}
+
+.tool-button,
+.subtool-button {
+  justify-content: center;
+  align-items: center;
+  user-select: none;
+  background-color: var(--ui-element-background-color);
+  fill: var(--foreground-color);
+  width: 2.2rem;
+  height: 1.9rem;
+  padding: 0.1rem;
+  transition: 0.15s;
+  display: inline-grid;
+  box-sizing: content-box; /* FIXME: use border-box */
+}
+
+.tool-button:first-child,
+.subtool-button:first-child {
+  border-radius: 0.65em 0 0 0.65em;
+}
+
+.tool-button:first-child:has(
+    .subtool-button:nth-child(2)[style*="visibility: visible;"]
+  ) {
+  border-radius: 0.65em 0 0 0;
+}
+
+.tool-button:last-child,
+.subtool-button:last-child {
+  border-radius: 0 0.65em 0.65em 0;
+}
+
+.subtool-button {
+  margin-top: -0.1rem;
+  fill: unset;
+  background-color: unset;
+}
+
+.multi-tool::after {
+  position: absolute;
+  content: "";
+  border-top: 5px solid transparent;
+  border-right: 5px solid var(--foreground-color);
+  margin-right: -5px;
+  margin-left: 1.8rem;
+  margin-top: calc(1.9rem - 6px);
+  pointer-events: none;
+}
+
+.subtool-button:last-child {
+  border-radius: 0 0 0.65em 0.65em;
+}
+
+.subtool-button:not(:first-child) {
+  visibility: hidden;
+  transition-duration: 100ms;
+  background-color: var(--ui-element-background-color);
+  fill: var(--foreground-color);
+  box-shadow: 1px 3px 3px #0006;
+}
+
+.tool-icon {
+  width: 1.75rem;
+  height: 1.75rem;
+  position: relative;
+}
+
+.tool-icon:hover {
+  position: relative;
+  transform: scale(1.1, 1.1);
+}
+
+.tool-icon--hidden {
+  display: none;
+}
+
+.icon-tabler {
+  stroke-width: 1.7px;
+}
+
+.subtool-button:hover,
+.tool-button:hover {
+  background-color: var(--editor-tool-button-hover-background-color);
+}
+
+.subtool-button:active,
+.tool-button:active {
+  background-color: var(--editor-tool-button-active-background-color);
+}
+
+.selected .subtool-button:first-child,
+.tool-button.selected {
+  background-color: var(--editor-tool-button-selected-background-color);
+  fill: var(--background-color);
+}
+
+.tool-button.selected .icon-tabler {
+  stroke: var(--background-color);
+}
+
+.multi-tool.selected::after {
+  border-right: 5px solid var(--background-color);
+}
+
+.subtool-button:not(:first-child) .icon-tabler {
+  stroke: var(--foreground-color);
+}
+
+#mini-console {
+  display: none; /* will be set to 'inherit' when needed */
+  z-index: 3;
+  position: absolute;
+  color: var(--editor-mini-console-foreground-color);
+  background-color: var(--editor-mini-console-background-color);
+  font-size: 0.8rem;
+  padding: 1px 4px 1px 4px;
+  bottom: 0;
+  right: 0;
+}
+
+.text-entry {
+  padding: 0.5em;
+}
+
+:root {
+  --metrics-handle-color: rgb(153 153 153);
+  --positive-metrics-handle-color: rgb(23 89 241);
+  --negative-metrics-handle-color: rgb(241 23 89);
+}
+
+sidebearing-handle {
+  font-size: 0.8em;
+  user-select: none;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+sidebearing-handle > .advance,
+sidebearing-handle > .left-sidebearing,
+sidebearing-handle > .right-sidebearing {
+  --sb-bg-color: var(--metrics-handle-color);
+  position: absolute;
+  box-sizing: border-box;
+  padding: 0.1em 0.6em 0.1em 0.6em;
+  border-radius: 0.66em;
+  transform: translate(-50%, 100%);
+  background-color: rgb(from var(--sb-bg-color) r g b / 63%);
+  color: white;
+  pointer-events: auto;
+}
+
+sidebearing-handle > .positive {
+  --sb-bg-color: var(--positive-metrics-handle-color);
+}
+
+sidebearing-handle > .negative {
+  --sb-bg-color: var(--negative-metrics-handle-color);
+}
+
+sidebearing-handle > .selected {
+  background-color: var(--sb-bg-color);
+}
+
+sidebearing-handle > .hovered {
+  box-shadow: 0 0 0.7em var(--sb-bg-color);
+}
+
+sidebearing-handle > .advance {
+  left: 50%;
+  pointer-events: none;
+}
+
+sidebearing-handle > .left-sidebearing {
+  transform: translate(0%, 100%);
+  left: 0%;
+  cursor: w-resize;
+  border-radius: 0.1em 0.66em 0.66em 0.1em;
+}
+
+sidebearing-handle > .right-sidebearing {
+  transform: translate(-100%, 100%);
+  left: 100%;
+  cursor: e-resize;
+  border-radius: 0.66em 0.1em 0.1em 0.66em;
+}
+
+kerning-handle {
+  --kern-bg-color: var(--metrics-handle-color);
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 0em 0.5em;
+  justify-items: center;
+  position: absolute;
+  top: 0px;
+  left: 0px;
+  font-size: 0.8em;
+  padding: 0.2em 0.8em 0.2em 0.8em;
+  border-radius: 0.66em;
+  color: white;
+  background-color: rgb(from var(--kern-bg-color) r g b / 63%);
+  cursor: ew-resize;
+  user-select: none;
+  transform: translate(-50%, 50%);
+}
+
+kerning-handle > .value {
+  grid-column-start: span 2;
+}
+
+kerning-handle > .group {
+  font-weight: bold;
+}
+
+kerning-handle.selected {
+  background-color: var(--kern-bg-color);
+}
+
+kerning-handle.positive {
+  --kern-bg-color: var(--positive-metrics-handle-color);
+}
+
+kerning-handle.negative {
+  --kern-bg-color: var(--negative-metrics-handle-color);
+}
