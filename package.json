@@ -7,7 +7,7 @@
   "type": "module",
   "scripts": {
     "vendor": "./vendor.sh",
-    "build": "webpack --config webpack.config.cjs --mode production",
+    "build": "webpack --config webpack.config.cjs --mode production && node fix-paths.mjs",
     "build:dev": "webpack --config webpack.config.cjs --mode development",
     "verify": "node harness/verify.mjs"
   },

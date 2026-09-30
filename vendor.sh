@@ -33,6 +33,13 @@ for pkg in fontra-core fontra-webcomponents views-editor; do
     "$CACHE/src-js/$pkg/" "$VENDOR/$pkg/"
 done
 
+# Base-path patch: the Fontra client hardcodes root-absolute asset URLs
+# (/lang/, /data/, /fonts/…), which only work when dist/ is served at a
+# domain root. We deploy under a Pages project path (/fontra-embed/), so
+# patch them relative. Fails loudly when the pinned source moves — then
+# re-audit the patch.
+patch -s -d "$VENDOR" -p1 < "$HERE/patches/base-paths.patch"
+
 # editor view stylesheet, referenced by src/embed.html as ./assets/editor.css
 rm -rf "$HERE/src/assets"
 cp -R "$CACHE/src-js/views-editor/assets" "$HERE/src/assets"

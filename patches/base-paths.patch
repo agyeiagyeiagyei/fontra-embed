@@ -1,0 +1,33 @@
+--- a/fontra-core/src/localization.js
++++ b/fontra-core/src/localization.js
+@@ -29,7 +29,7 @@
+ function languageChanged(locale) {
+   // Do explicit .replace() because our cache busting mechanism is simplistic,
+   // and backtick strings don't work.
+-  const translationsPath = "/lang/locale.js".replace("locale", locale);
++  const translationsPath = "./lang/locale.js".replace("locale", locale);
+ 
+   import(/*webpackIgnore: true*/ translationsPath)
+     .then((mod) => {
+--- a/fontra-core/src/glyph-data.js
++++ b/fontra-core/src/glyph-data.js
+@@ -22,7 +22,7 @@
+   glyphDataCSV = fs.readFileSync(path, "utf8");
+ } else {
+   // Browser
+-  const response = await fetch("/data/glyph-data.csv");
++  const response = await fetch("./data/glyph-data.csv");
+   glyphDataCSV = await response.text();
+ }
+ 
+--- a/views-editor/src/editor.js
++++ b/views-editor/src/editor.js
+@@ -791,7 +791,7 @@
+ 
+     await this.fontController.subscribeChanges({ kerning: null }, true);
+ 
+-    const blankFont = new FontFace("AdobeBlank", `url("/fonts/AdobeBlank.woff2")`, {});
++    const blankFont = new FontFace("AdobeBlank", `url("./fonts/AdobeBlank.woff2")`, {});
+     document.fonts.add(blankFont);
+     await blankFont.load();
+ 
