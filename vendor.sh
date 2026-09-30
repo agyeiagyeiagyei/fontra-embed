@@ -42,7 +42,8 @@ done
 # loudly at runtime (404), not silently here.
 for prefix in lang data fonts css images tabler-icons; do
   grep -rl "\"/${prefix}/" "$VENDOR" --include="*.js" --include="*.html" 2>/dev/null \
-    | xargs sed -i '' -e "s|\"/${prefix}/|\"./${prefix}/|g" -e "s|'/${prefix}/|'./${prefix}/|g"
+    | while read -r f; do sed -i.bak -e "s|\"/${prefix}/|\"./${prefix}/|g" -e "s|'/${prefix}/|'./${prefix}/|g" "$f"; done
+  find "$VENDOR" -name "*.bak" -delete
 done
 
 # editor view stylesheet, referenced by src/embed.html as ./assets/editor.css
