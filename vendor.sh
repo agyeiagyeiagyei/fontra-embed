@@ -33,12 +33,17 @@ for pkg in fontra-core fontra-webcomponents views-editor; do
     "$CACHE/src-js/$pkg/" "$VENDOR/$pkg/"
 done
 
-# Base-path patch: the Fontra client hardcodes root-absolute asset URLs
-# (/lang/, /data/, /fonts/…), which only work when dist/ is served at a
-# domain root. We deploy under a Pages project path (/fontra-embed/), so
-# patch them relative. Fails loudly when the pinned source moves — then
-# re-audit the patch.
-patch -s -d "$VENDOR" -p1 < "$HERE/patches/base-paths.patch"
+# Base paths: the Fontra client hardcodes root-absolute asset URLs
+# (/lang/, /data/, /fonts/, /css/, /images/, /tabler-icons/), which only
+# resolve when dist/ is served at a domain root. We deploy under a Pages
+# project path (/fontra-embed/), so sweep them all relative — they then
+# resolve against the document in both layouts. Sweep instead of a patch:
+# 60+ call sites across 20 files; a new absolute ref after a re-pin fails
+# loudly at runtime (404), not silently here.
+for prefix in lang data fonts css images tabler-icons; do
+  grep -rl "\"/${prefix}/" "$VENDOR" --include="*.js" --include="*.html" 2>/dev/null \
+    | xargs sed -i '' -e "s|\"/${prefix}/|\"./${prefix}/|g" -e "s|'/${prefix}/|'./${prefix}/|g"
+done
 
 # editor view stylesheet, referenced by src/embed.html as ./assets/editor.css
 rm -rf "$HERE/src/assets"
