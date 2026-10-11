@@ -44,9 +44,12 @@ function measure(contours, advance) {
     vals.sort((x, y) => x - y);
     const out = [];
     for (let i = 0; i + 1 < vals.length; i += 2) {
-      out.push(vals[i + 1] - vals[i]);
+      const w = vals[i + 1] - vals[i];
+      if (w > 5) {
+        out.push([w, vals[i], vals[i + 1]]);
+      }
     }
-    return out.filter((v) => v > 5);
+    return out;
   };
   const ys = [];
   for (const c of contours) {
@@ -59,14 +62,22 @@ function measure(contours, advance) {
   }
   const yMin = Math.min(...ys);
   const yMax = Math.max(...ys);
-  const stems = runs(yMin + (yMax - yMin) * 0.25, false);
-  const bars = runs(advance * 0.5, true);
-  const r = {};
+  // Scan coordinates + the winning (thinnest) run extents ride along so
+  // the overlay can draw EXACTLY what produced each number.
+  const scanY = yMin + (yMax - yMin) * 0.25;
+  const scanX = advance * 0.5;
+  const stems = runs(scanY, false);
+  const bars = runs(scanX, true);
+  const r = { scanY, scanX };
   if (stems.length) {
-    r.stem = Math.min(...stems);
+    const m = stems.reduce((a, b) => (b[0] < a[0] ? b : a));
+    r.stem = m[0];
+    r.stemRun = [m[1], m[2]];
   }
   if (bars.length) {
-    r.bar = Math.min(...bars);
+    const m = bars.reduce((a, b) => (b[0] < a[0] ? b : a));
+    r.bar = m[0];
+    r.barRun = [m[1], m[2]];
   }
   if (r.stem && r.bar) {
     r.contrast = r.stem / r.bar;
@@ -109,11 +120,37 @@ function livePath() {
   return { name: pg.glyph.name, contours, advance: pg.glyph.xAdvance };
 }
 
+// The location being edited RIGHT NOW: Fontra's scene follows the selected
+// source/layer (axis-NAME-keyed, source space). The reference must be
+// measured there — a glyph can carry several layers on the axis, and the
+// session's opening layer is not necessarily the one on the canvas.
+function editLocation() {
+  const ec = window.editorController;
+  const ss =
+    ec &&
+    ec.sceneController &&
+    ((ec.sceneController.sceneModel && ec.sceneController.sceneModel.sceneSettings) ||
+      ec.sceneController.sceneSettings);
+  const loc = ss && ss.fontLocationSourceMapped;
+  if (!loc || typeof loc !== "object") {
+    return null;
+  }
+  const out = {};
+  for (const k of Object.keys(loc)) {
+    const v = Number(loc[k]);
+    if (isFinite(v)) {
+      out[k] = v;
+    }
+  }
+  return Object.keys(out).length ? out : null;
+}
+
 export function startMetricsHud(session, font) {
   const num = (v) =>
-    v === undefined || v === null ? "–" : (Math.round(v * 10) / 10).toFixed(1);
+    v === undefined || v === null ? "\u2013" : (Math.round(v * 10) / 10).toFixed(1);
   let refData = null;
-  let refGlyph = "H";
+  let refGlyph = "";
+  let lastLive = null;
 
   const box = document.createElement("div");
   box.id = "avar2-studio-metrics";
@@ -121,10 +158,11 @@ export function startMetricsHud(session, font) {
     '<div class="hd"></div>' +
     '<table><tr><th></th><th>bar</th><th>stem</th><th>s/b</th></tr>' +
     '<tr class="live"><td class="g"></td><td class="b"></td><td class="s"></td><td class="c"></td></tr>' +
-    '<tr class="ref"><td class="g"><input id="avar2-ref-glyph" value="H" maxlength="12" spellcheck="false"></td>' +
+    '<tr class="ref"><td class="g"><input id="avar2-ref-glyph" value="" placeholder="H" maxlength="12" spellcheck="false"></td>' +
     '<td class="b"></td><td class="s"></td><td class="c"></td></tr></table>' +
     '<div class="ft">live vs reference, measured at this location. ' +
-    "Type any glyph name to compare against.</div>";
+    "Type a glyph name to compare \u2014 its outline is drawn in the editor " +
+    "under the glyph (scan cuts marked). Clear the field to hide it.</div>";
   const st = document.createElement("style");
   st.textContent =
     "#avar2-studio-metrics{position:fixed;right:12px;bottom:12px;z-index:99999;" +
@@ -150,16 +188,180 @@ export function startMetricsHud(session, font) {
       e.textContent = v;
     }
   };
+  // CANVAS OVERLAY. The reference outline is drawn in the drawing editor
+  // itself, under the glyph being edited: editorController
+  // .visualizationLayers.definitions IS Fontra's live registry array, so a
+  // definition spliced in at runtime (zIndex-ordered, exactly what
+  // registerVisualizationLayerDefinition does) paints on every frame and
+  // pans/zooms with the canvas. Scan cuts are marked on both shapes \u2014
+  // gray for the reference, amber for the live glyph \u2014 so the table's
+  // numbers are visible as geometry, in place, at drawing scale.
+  const LAYER_ID = "avar2.studio.reference";
+  const overlay = { contours: null, bbox: null, refCuts: null, liveCuts: null, sig: null };
+  let layerInstalled = false;
+  const repaint = () => {
+    const ec = window.editorController;
+    if (ec && ec.canvasController) {
+      ec.canvasController.requestUpdate();
+    }
+  };
+  const drawOverlay = (context, positionedGlyph, parameters) => {
+    const contours = overlay.contours;
+    if (!contours) {
+      return;
+    }
+    const path = new Path2D();
+    for (const c of contours) {
+      path.moveTo(c[0][0], c[0][1]);
+      for (let i = 1; i < c.length; i++) {
+        path.lineTo(c[i][0], c[i][1]);
+      }
+      path.closePath();
+    }
+    context.fillStyle = parameters.fillColor;
+    context.fill(path, "nonzero");
+    const line = (x1, y1, x2, y2, color, width, dashed) => {
+      context.strokeStyle = color;
+      context.lineWidth = width;
+      context.setLineDash(dashed ? [parameters.dash * 2, parameters.dash] : []);
+      context.beginPath();
+      context.moveTo(x1, y1);
+      context.lineTo(x2, y2);
+      context.stroke();
+    };
+    const bb = overlay.bbox;
+    const cuts = (m, color) => {
+      if (!m || !bb) {
+        return;
+      }
+      if (m.scanY !== undefined) {
+        line(bb.x0, m.scanY, bb.x1, m.scanY, color, parameters.hair, true);
+      }
+      if (m.scanX !== undefined) {
+        line(m.scanX, bb.y0, m.scanX, bb.y1, color, parameters.hair, true);
+      }
+      if (m.stemRun) {
+        line(m.stemRun[0], m.scanY, m.stemRun[1], m.scanY, color, parameters.bold, false);
+      }
+      if (m.barRun) {
+        line(m.scanX, m.barRun[0], m.scanX, m.barRun[1], color, parameters.bold, false);
+      }
+    };
+    cuts(overlay.refCuts, parameters.refColor);
+    cuts(overlay.liveCuts, parameters.liveColor);
+  };
+  const installLayer = () => {
+    if (layerInstalled) {
+      return true;
+    }
+    const ec = window.editorController;
+    const vl = ec && ec.visualizationLayers;
+    if (!vl || !Array.isArray(vl.definitions)) {
+      return false;
+    }
+    const def = {
+      identifier: LAYER_ID,
+      name: "avar2 reference overlay",
+      selectionFunc: (visContext) => {
+        if (!overlay.contours) {
+          return [];
+        }
+        const pg =
+          visContext.model.getSelectedPositionedGlyph &&
+          visContext.model.getSelectedPositionedGlyph();
+        return pg ? [pg] : [];
+      },
+      zIndex: 100,
+      // screenParameters are divided by the magnification before draw, so
+      // these are screen pixels: constant weight at any zoom.
+      screenParameters: { hair: 1, bold: 4, dash: 7 },
+      colors: {
+        fillColor: "rgba(128,128,136,0.30)",
+        refColor: "rgba(96,96,104,0.85)",
+        liveColor: "rgba(200,128,0,0.9)",
+      },
+      colorsDarkMode: {
+        fillColor: "rgba(170,170,180,0.28)",
+        refColor: "rgba(190,190,200,0.85)",
+        liveColor: "rgba(255,212,121,0.9)",
+      },
+      draw: drawOverlay,
+    };
+    let idx = 0;
+    while (idx < vl.definitions.length && vl.definitions[idx].zIndex <= def.zIndex) {
+      idx++;
+    }
+    vl.definitions.splice(idx, 0, def);
+    vl.toggle(LAYER_ID, true);
+    layerInstalled = true;
+    return true;
+  };
+  const syncOverlay = () => {
+    installLayer();
+    const refM = refGlyph && refData && refData.metrics && refData.metrics[refGlyph];
+    if (!refM || !refM.contours || !refM.contours.length) {
+      if (overlay.contours) {
+        overlay.contours = null;
+        overlay.sig = null;
+        repaint();
+      }
+      return;
+    }
+    const pts = [];
+    for (const c of refM.contours) {
+      for (const pt of c) {
+        pts.push(pt);
+      }
+    }
+    if (lastLive) {
+      for (const c of lastLive.contours) {
+        for (const pt of c) {
+          pts.push(pt);
+        }
+      }
+    }
+    const xs = pts.map((pt) => pt[0]);
+    const ysv = pts.map((pt) => pt[1]);
+    const bb = {
+      x0: Math.min(...xs),
+      x1: Math.max(...xs),
+      y0: Math.min(...ysv),
+      y1: Math.max(...ysv),
+    };
+    const refCuts = measure(refM.contours, refM.advance || 0);
+    const liveCuts = lastLive ? measure(lastLive.contours, lastLive.advance) : null;
+    const sig = JSON.stringify([refGlyph, bb, refCuts, liveCuts]);
+    if (sig !== overlay.sig) {
+      overlay.bbox = bb;
+      overlay.refCuts = refCuts;
+      overlay.liveCuts = liveCuts;
+      overlay.contours = refM.contours;
+      overlay.sig = sig;
+      repaint();
+    }
+  };
   const paintRef = () => {
     const m = refData && refData.metrics && refData.metrics[refGlyph];
-    cell("tr.ref td.b", m ? num(m.bar) : "–");
-    cell("tr.ref td.s", m ? num(m.stem) : "–");
-    cell("tr.ref td.c", m && m.contrast ? m.contrast.toFixed(2) : "–");
+    cell("tr.ref td.b", m ? num(m.bar) : "\u2013");
+    cell("tr.ref td.s", m ? num(m.stem) : "\u2013");
+    cell("tr.ref td.c", m && m.contrast ? m.contrast.toFixed(2) : "\u2013");
   };
+  let fetchedLocKey = null;
   const loadRef = (g) => {
     refGlyph = g;
+    if (!g) {
+      // Blank is the OFF state: no reference row, no overlay.
+      refData = null;
+      fetchedLocKey = null;
+      cell(".hd", "");
+      paintRef();
+      syncOverlay();
+      return;
+    }
+    const loc = editLocation();
+    fetchedLocKey = loc ? JSON.stringify(loc) : null;
     font
-      .getReferenceMetrics(g)
+      .getReferenceMetrics(g, loc || undefined)
       .then((m) => {
         if (!m) {
           return;
@@ -168,26 +370,42 @@ export function startMetricsHud(session, font) {
         const loc = Object.entries(m.location || {})
           .filter(([k]) => k.toLowerCase() !== "lcwd")
           .map(([k, v]) => k + " " + v)
-          .join(" · ");
+          .join(" \u00b7 ");
         cell(".hd", "at " + loc);
         paintRef();
+        syncOverlay();
       })
       .catch(() => {});
   };
   const input = box.querySelector("#avar2-ref-glyph");
-  input.addEventListener("change", () => loadRef(input.value.trim() || "H"));
-  input.addEventListener("keydown", (e) => e.stopPropagation());
-  loadRef("H");
+  input.addEventListener("change", () => loadRef(input.value.trim()));
+  input.addEventListener("keydown", (e) => {
+    e.stopPropagation();
+    if (e.key === "Enter") {
+      input.blur();
+    }
+  });
+  paintRef();
 
   setInterval(() => {
-    const lp = livePath();
-    if (!lp) {
-      return;
+    // Reference follows the canvas: switching layers (or nudging the
+    // location) re-measures at the NEW location.
+    if (refGlyph) {
+      const loc = editLocation();
+      const key = loc ? JSON.stringify(loc) : null;
+      if (key && key !== fetchedLocKey) {
+        loadRef(refGlyph);
+      }
     }
-    const m = measure(lp.contours, lp.advance);
-    cell("tr.live td.g", lp.name);
-    cell("tr.live td.b", num(m.bar));
-    cell("tr.live td.s", num(m.stem));
-    cell("tr.live td.c", m.contrast ? m.contrast.toFixed(2) : "–");
+    const lp = livePath();
+    if (lp) {
+      lastLive = lp;
+      const m = measure(lp.contours, lp.advance);
+      cell("tr.live td.g", lp.name);
+      cell("tr.live td.b", num(m.bar));
+      cell("tr.live td.s", num(m.stem));
+      cell("tr.live td.c", m.contrast ? m.contrast.toFixed(2) : "\u2013");
+    }
+    syncOverlay();
   }, 400);
 }

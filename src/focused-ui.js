@@ -98,9 +98,27 @@ function injectFocusCSS() {
 function makeIsStudioItem(cfg) {
   const keys = [cfg.axis_name, cfg.tag].filter(Boolean);
   const labelRe = new RegExp("(^|[\\s,])" + cfg.tag + "\\s+-?[\\d.]+");
-  return (item) => {
-    if (!item || item.isFontSource) {
+  return (item, sources) => {
+    if (!item || item.isFontSource || item.isDefaultSource) {
       return false;
+    }
+    // A studio brace PINS this control axis explicitly in its own
+    // source location — even when the pinned value IS the axis default
+    // (the designer may rest the axis on the corrected end). Masters
+    // never carry the key; the dense location always does (defaults
+    // filled), which is why the old value!==default test went blind
+    // once the default moved onto the braces' own value.
+    const src =
+      sources && typeof item.sourceIndex === "number"
+        ? sources[item.sourceIndex]
+        : null;
+    const sparseLocation = (src && src.location) || null;
+    if (sparseLocation) {
+      for (const key of keys) {
+        if (key in sparseLocation) {
+          return true;
+        }
+      }
     }
     const denseLocation = item.denseLocation || {};
     for (const key of keys) {
@@ -175,7 +193,20 @@ function startSourcesSweep(cfg) {
     }
     const list = panel.sourcesList;
     const items = list.items || [];
-    const anyStudio = items.some(isStudioItem);
+    const ec = window.editorController;
+    const positionedGlyph =
+      ec &&
+      ec.sceneController &&
+      ec.sceneController.sceneModel &&
+      ec.sceneController.sceneModel.getSelectedPositionedGlyph &&
+      ec.sceneController.sceneModel.getSelectedPositionedGlyph();
+    const sources =
+      (positionedGlyph &&
+        positionedGlyph.varGlyph &&
+        positionedGlyph.varGlyph.glyph &&
+        positionedGlyph.varGlyph.glyph.sources) ||
+      null;
+    const anyStudio = items.some((it) => isStudioItem(it, sources));
     const rows = list.shadowRoot
       ? list.shadowRoot.querySelectorAll(".contents > .row")
       : [];
@@ -184,7 +215,7 @@ function startSourcesSweep(cfg) {
       if (!item) {
         return;
       }
-      const studio = isStudioItem(item);
+      const studio = isStudioItem(item, sources);
       const editTarget =
         studio && !COMPUTED_LABEL_RE.test(String(item.name || ""));
       row.style.display = anyStudio && !studio ? "none" : "";
