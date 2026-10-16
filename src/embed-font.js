@@ -120,8 +120,10 @@ export class EmbedFont {
   // for the reference HUD (src/metrics-hud.js). Only present when the parent
   // is the studio bridge; other hosts answer "unknown method", which the
   // HUD treats as "no reference data".
-  async getReferenceMetrics(refs) {
-    return this._rpc("getReferenceMetrics", [refs]);
+  // The HUD passes the location being edited right now; without it the
+  // bridge pins the reference to the session's opening layer.
+  async getReferenceMetrics(refs, location) {
+    return this._rpc("getReferenceMetrics", [refs, location]);
   }
 
   // --- editing ------------------------------------------------------------
