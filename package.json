@@ -9,6 +9,7 @@
     "vendor": "./vendor.sh",
     "build": "webpack --config webpack.config.cjs --mode production && node fix-paths.mjs",
     "build:dev": "webpack --config webpack.config.cjs --mode development",
+    "build:shim": "node build-studio-shim.mjs",
     "verify": "node harness/verify.mjs"
   },
   "workspaces": [

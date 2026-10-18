@@ -47,7 +47,15 @@ any differently-licensed host project.
 ./vendor.sh          # one-time (or to re-pin): fetch + copy fontra sources
 npm install
 npm run build        # production bundle into dist/  (build:dev for dev)
+npm run build:shim   # standalone studio shim → dist/studio-shim.js
 ```
+
+`build:shim` concatenates the focused-studio-UI sources
+(`src/metrics-hud.js` + `src/focused-ui.js` + `src/studio-shim-bootstrap.js`)
+into one self-contained classic script: the avar2-studio desktop carries it
+as `src/avar2_studio/fontra/embed-shim.js` and injects it into proxied
+Fontra pages, so the desktop and this embed run the same shim
+implementation off the same session-config shape.
 
 Serve `dist/` statically with anything, e.g. `npx serve dist` or
 `python3 -m http.server -d dist`, then open `/harness/index.html`. The

@@ -1,17 +1,41 @@
-// focused-ui.js — the studio "focused editor" shim, ported into the embed
-// bundle from avar2-studio's server-side page injection
-// (avar2_studio/server.py: _fontra_focus_css + _FONTRA_STUDIO_SHIM_JS).
+// focused-ui.js — the studio "focused editor" shim: THE ONE shared
+// implementation for both studio hosts (T3.4; the desktop's
+// avar2_studio/fontra/shim.js used to be a second, drifted copy).
 //
-// Why here: the studio's static demo iframes this bundle cross-origin and
+//   - browser embed: bundled here, driven by the parent bridge
+//     (avar2-studio frontend/src/editor-bridge.js) sending the session config
+//     in the init message. The bridge enforces the actual write guards; this
+//     module is UI-level narrowing only.
+//   - desktop studio: avar2-studio's Fontra proxy injects a BUILT copy of
+//     this file + metrics-hud.js (build-studio-shim.mjs → dist/studio-shim.js,
+//     carried in avar2-studio as src/avar2_studio/fontra/embed-shim.js) with
+//     the host bootstrap from src/studio-shim-bootstrap.js.
+//
+// Both hosts feed the SAME session shape: {studio, tag, axis_name,
+// axis_default, glyph, auto_enable_edits?, allow_computed_edits?} — the
+// bridge init message in the embed, GET /api/fontra-shim-config on the
+// desktop. Non-studio sessions (harness, other hosts) get the full,
+// unmodified UI.
+//
+// Reconciled divergences from the old desktop shim (its behavior is the
+// reference):
+//   - labelRe is regex-escaped and case-insensitive in BOTH hosts: labels
+//     print the AUTHORED tag case, and a tag drift on either side must never
+//     silently unmatch.
+//   - the sources list sorts by source name (Fontra's own "by-source-name"
+//     option), so the master/instance-labelled studio layers read A→Z by
+//     style.
+//   - the editing policy rides two session flags instead of diverging:
+//     auto_enable_edits auto-enables studio rows once per layer (the embed
+//     demo's behavior; the desktop leaves rows for the designer to toggle
+//     deliberately); allow_computed_edits permits "→ computed" correction
+//     targets as edit targets (the desktop — its writes self-heal on the
+//     next shadow regen; the embed refuses them because the bridge guards
+//     those layers read-only, so an enabled row would bounce EVERY edit).
+//
+// Why bundled: the studio's static demo iframes this bundle cross-origin and
 // cannot inject CSS/JS into it, so the slimmed-down UI must ship inside the
 // bundle itself for the license separation to hold without a server.
-//
-// Active only for studio sessions — the parent bridge (avar2-studio
-// frontend/src/editor-bridge.js) sends session config
-// {studio: true, tag, axis_name, axis_default, glyph} in the init message.
-// Non-studio embeds (harness, other hosts) get the full, unmodified UI.
-// This module is UI-level narrowing only; the bridge enforces the actual
-// write guards.
 //
 // ⚠ FONTRA VERSION DRIFT RISK — every selector below is coupled to the
 // vendored Fontra DOM (googlefonts/fontra @ 726b854a1, see vendor.sh):
@@ -73,6 +97,11 @@ const HIDDEN_ACCORDION_ITEMS = [
 ];
 
 function injectFocusCSS() {
+  // The desktop proxy already injects the same rules server-side
+  // (avar2_studio/fontra/focus.css) — don't double up there.
+  if (document.getElementById("avar2-studio-fontra-focus")) {
+    return;
+  }
   const panelRules = HIDDEN_SIDEBAR_PANELS.map(
     (name) =>
       `.sidebar-tab[data-sidebar-name="${name}"],\n` +
@@ -97,7 +126,10 @@ function injectFocusCSS() {
 // Fallback: match the seed-time source-name label ("<corner> · <tag> <value>").
 function makeIsStudioItem(cfg) {
   const keys = [cfg.axis_name, cfg.tag].filter(Boolean);
-  const labelRe = new RegExp("(^|[\\s,])" + cfg.tag + "\\s+-?[\\d.]+");
+  // Regex-escaped and case-insensitive: labels print the AUTHORED tag case,
+  // and a tag drift on either side must never silently unmatch.
+  const tagEsc = String(cfg.tag).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const labelRe = new RegExp("(^|[\\s,])" + tagEsc + "\\s+-?[\\d.]+", "i");
   return (item, sources) => {
     if (!item || item.isFontSource || item.isDefaultSource) {
       return false;
@@ -130,28 +162,33 @@ function makeIsStudioItem(cfg) {
   };
 }
 
-// Opens the designspace-navigation tab, trims the panel to the sources
-// list, then keeps the list narrowed to the session's brace-layer rows:
-// studio rows stay visible and get multi-source editing enabled once per
-// layer (the designer can still toggle a row off); masters, font sources
-// and other layers are hidden and never keep editing enabled. If no studio
-// row exists the list is left untrimmed (fail open) and nothing is
-// auto-enabled (fail closed).
-//
-// One deliberate deviation from the desktop shim: rows the bridge labels
-// "<label> → computed" (correction targets — re-derived on every build)
-// stay visible but are never editing-enabled. The desktop can afford to
-// enable them (its writes self-heal on regen); here the bridge guards
-// writes per layer and rejects any editFinal touching a computed layer,
-// so enabling one would make EVERY edit bounce. The label is part of the
-// bridge contract — the same contract the studio-item fallback below
+// Rows the bridge labels "<label> → computed" are correction targets —
+// re-derived on every build. Whether they may be editing targets rides the
+// session's allow_computed_edits: the desktop allows them (writes into the
+// shadow self-heal on regen); the embed refuses them, because its bridge
+// guards writes per layer and rejects any editFinal touching a computed
+// layer, so an enabled row would make EVERY edit bounce. The label is part
+// of the bridge contract — the same contract the studio-item fallback above
 // pattern-matches ("<corner> · <tag> <value>").
 const COMPUTED_LABEL_RE = / → computed$/;
 
+// Opens the designspace-navigation tab, sorts the sources list A→Z by
+// source name, trims the panel to the sources list, then keeps the list
+// narrowed to the session's brace-layer rows: studio rows stay visible;
+// masters, font sources and other layers are hidden and never keep editing
+// enabled. With the session's auto_enable_edits (the embed demo) studio
+// rows also get multi-source editing enabled once per layer — the designer
+// can still toggle a row off; without it (the desktop) rows come up
+// untouched and an opened layer edits alone until toggled on. If no studio
+// row exists the list is left untrimmed (fail open) and nothing is
+// auto-enabled (fail closed).
 function startSourcesSweep(cfg) {
   const isStudioItem = makeIsStudioItem(cfg);
+  const autoEnable = cfg.auto_enable_edits === true;
+  const allowComputed = cfg.allow_computed_edits === true;
   let tabOpened = false;
   let panelTrimmed = false;
+  let sortSet = false;
   const autoEnabled = new Set();
 
   const sweep = () => {
@@ -161,6 +198,25 @@ function startSourcesSweep(cfg) {
     const panel = host && host.children[0];
     if (!panel || !panel.sourcesList) {
       return;
+    }
+    if (!sortSet) {
+      // Alphabetical by source name — studio layers are labelled by
+      // master/instance name, so the list reads A→Z by style. Retry until
+      // the editor's settings object exists: the panel's DOM can be
+      // queryable before the editor finishes wiring the controller.
+      const settings =
+        window.editorController &&
+        window.editorController.sceneController &&
+        window.editorController.sceneController.applicationSettings;
+      if (settings) {
+        if (settings.glyphSourcesSortOptions !== "by-source-name") {
+          settings.glyphSourcesSortOptions = "by-source-name";
+        }
+        if (typeof panel._updateSources === "function") {
+          panel._updateSources();
+        }
+        sortSet = true;
+      }
     }
     if (!tabOpened) {
       const tab = document.querySelector(
@@ -217,23 +273,21 @@ function startSourcesSweep(cfg) {
       }
       const studio = isStudioItem(item, sources);
       const editTarget =
-        studio && !COMPUTED_LABEL_RE.test(String(item.name || ""));
+        studio && (allowComputed || !COMPUTED_LABEL_RE.test(String(item.name || "")));
       row.style.display = anyStudio && !studio ? "none" : "";
       if (!anyStudio) {
         return;
       }
-      if (editTarget) {
-        if (!autoEnabled.has(item.layerName)) {
-          autoEnabled.add(item.layerName);
-          if (!item.editing) {
-            item.editing = true;
-          }
+      if (autoEnable && editTarget && !autoEnabled.has(item.layerName)) {
+        autoEnabled.add(item.layerName);
+        if (!item.editing) {
+          item.editing = true;
         }
-      } else if (item.editing) {
-        // Hard rule: masters, source layers and computed correction
-        // targets are never batch-edit targets — Fontra's own init can
-        // put the selected source here, so keep stripping it, not just
-        // once.
+      } else if (!editTarget && item.editing) {
+        // Hard rule: masters, source layers and (unless the host allows
+        // computed edits) correction-target rows are never batch-edit
+        // targets — Fontra's own init can put the selected source here, so
+        // keep stripping it, not just once.
         item.editing = false;
       }
     });
@@ -241,16 +295,20 @@ function startSourcesSweep(cfg) {
   setInterval(sweep, 500);
 }
 
-// Entry point called from embed-entry.js on init. No-op for non-studio
-// sessions. The metrics HUD (Phase 4b) rides the same gate, plus the
-// session must name a glyph and the parent must answer the metrics RPC.
-export function applyFocusedUI(session, font) {
+// Entry point. The embed calls it from embed-entry.js on init with the
+// bridge session + the EmbedFont (whose getReferenceMetrics rides the
+// bridge RPC); the desktop's standalone bootstrap (studio-shim-bootstrap.js)
+// calls it with the /api/fontra-shim-config session + an HTTP metrics
+// adapter. No-op for non-studio sessions. The metrics HUD rides the same
+// gate, plus the session must name a glyph and the host must answer the
+// metrics channel.
+export function applyFocusedUI(session, host) {
   if (!session?.studio) {
     return;
   }
   injectFocusCSS();
   startSourcesSweep(session);
-  if (session.glyph && font) {
-    startMetricsHud(session, font);
+  if (session.glyph && host) {
+    startMetricsHud(session, host);
   }
 }

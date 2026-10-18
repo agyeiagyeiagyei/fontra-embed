@@ -1,27 +1,30 @@
-// metrics-hud.js — the studio's reference-measurements HUD, ported from
-// avar2-studio's server-side injection (avar2_studio/server.py, the second
-// half of _FONTRA_STUDIO_SHIM_JS).
+// metrics-hud.js — the studio's reference-measurements HUD, part of the ONE
+// shared studio-shim implementation (T3.4; see focused-ui.js's header for
+// the two-host arrangement and the session-config shape).
 //
 // Correcting a glyph's horizontals means matching it to the glyphs that
 // already read right — E's bar to H's, at the same designspace point.
 // Fontra's ruler can measure what you have drawn, but it cannot tell you
 // what to aim at, because the target lives in a different glyph. This HUD
-// supplies those numbers: the parent bridge measures the PRISTINE source
-// model at this layer's exact coordinates (the control axis pinned to
-// default) and answers over RPC; the edited glyph's own row is its
-// PRE-EDIT state, not what is on the canvas right now.
+// supplies those numbers: the host measures the reference glyphs at this
+// layer's exact coordinates (the control axis pinned to default — the
+// desktop's server measures the last build, the embed's bridge the pristine
+// source model); the edited glyph's own row is its PRE-EDIT state, not what
+// is on the canvas right now.
 //
 // Deliberately a plain DOM panel rather than a canvas visualization layer:
 // it needs none of Fontra's internals, so a Fontra upgrade cannot silently
 // break it. The ONE Fontra coupling is livePath() below, which reads
-// window.editorController's scene model (set by embed-entry.js) — an API
-// coupling, not a selector one.
+// window.editorController's scene model (set by the host's editor entry)
+// — an API coupling, not a selector one.
 //
-// Loaded only for studio sessions with a glyph (applyFocusedUI gates it);
-// on non-studio parents the getReferenceMetrics RPC fails and the panel
-// simply shows dashes.
+// Loaded only for studio sessions with a glyph (applyFocusedUI gates it).
+// The host supplies the reference figures: the embed's EmbedFont rides the
+// bridge RPC, the desktop bootstrap fetches /api/control-axes/<tag>/
+// reference-metrics; on hosts without the channel the call fails and the
+// panel simply shows dashes.
 
-// Scanline stroke measurement, matching the parent's rule so the live and
+// Scanline stroke measurement, matching the host's rule so the live and
 // reference numbers are comparable: a horizontal cut low in the letter
 // reads its vertical stems, a vertical cut mid-advance reads its
 // horizontal bars, and the THINNEST run of each is the stroke weight.
@@ -145,7 +148,7 @@ function editLocation() {
   return Object.keys(out).length ? out : null;
 }
 
-export function startMetricsHud(session, font) {
+export function startMetricsHud(session, host) {
   const num = (v) =>
     v === undefined || v === null ? "\u2013" : (Math.round(v * 10) / 10).toFixed(1);
   let refData = null;
@@ -360,7 +363,7 @@ export function startMetricsHud(session, font) {
     }
     const loc = editLocation();
     fetchedLocKey = loc ? JSON.stringify(loc) : null;
-    font
+    host
       .getReferenceMetrics(g, loc || undefined)
       .then((m) => {
         if (!m) {
@@ -368,7 +371,7 @@ export function startMetricsHud(session, font) {
         }
         refData = m;
         const loc = Object.entries(m.location || {})
-          .filter(([k]) => k.toLowerCase() !== "lcwd")
+          .filter(([k]) => k.toLowerCase() !== String(session.tag || "").toLowerCase())
           .map(([k, v]) => k + " " + v)
           .join(" \u00b7 ");
         cell(".hd", "at " + loc);
